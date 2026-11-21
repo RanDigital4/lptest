@@ -8,7 +8,25 @@
   let browserProvider=null, signer=null, account=null, locker=null, readProvider=null, readLocker=null, toastTimer, quoteSeq=0, referralFromUrl=zero;
   const tokenContracts = {};
   const toast = msg => { const el=$('toast'); if(!el)return; el.textContent=msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),4300); };
-  const status = (id,msg,link) => { const el=$(id); if(!el)return; el.textContent=msg; if(link){el.append(' ');const a=document.createElement('a');a.href=link;a.target='_blank';a.rel='noopener';a.textContent='View on BscScan ↗';el.append(a);} };
+  const status = (id,msg,link) => { const el=$(id); if(!el)return; el.textContent=msg; if(link){el.append(' ');const a=document.createElement('a');a.href=link;a.target='_blank';a.rel='noopener';a.textContent='View on BscScan ↗';el.append(a);} if(id==='liquidityStatus')updateBusy(msg,link); };
+  // ---- Full-screen "please wait" overlay ----
+  let busyEl=null;
+  function ensureBusy(){
+    if(busyEl)return busyEl;
+    busyEl=document.createElement('div');
+    busyEl.style.cssText='position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;background:rgba(3,8,20,.82);backdrop-filter:blur(6px);padding:20px';
+    busyEl.innerHTML='<div style="max-width:460px;width:100%;text-align:center;background:#0e1b33;border:1px solid #c9a24a;border-radius:20px;padding:32px 26px;color:#fff;box-shadow:0 20px 60px rgba(0,0,0,.6)"><div id="busySpin" style="width:54px;height:54px;margin:0 auto 18px;border:5px solid rgba(255,255,255,.15);border-top-color:#f1c75b;border-radius:50%;animation:busyspin 1s linear infinite"></div><div id="busyTitle" style="font-size:1.35rem;font-weight:700;margin-bottom:10px"></div><div id="busyMsg" style="font-size:1rem;line-height:1.5;opacity:.9"></div><div style="margin-top:16px;font-size:.85rem;color:#f1c75b">⚠ Please wait. Page ko band ya refresh na karein.</div></div>';
+    const st=document.createElement('style');st.textContent='@keyframes busyspin{to{transform:rotate(360deg)}}';
+    document.head.append(st);document.body.append(busyEl);
+    return busyEl;
+  }
+  function showBusy(title,msg){const el=ensureBusy();el.querySelector('#busyTitle').textContent=title;el.querySelector('#busyMsg').textContent=msg||'';el.style.display='flex';}
+  function updateBusy(msg,link){
+    if(!busyEl||busyEl.style.display==='none')return;
+    const m=busyEl.querySelector('#busyMsg');m.textContent=msg||'';
+    if(link){m.append(' ');const a=document.createElement('a');a.href=link;a.target='_blank';a.rel='noopener';a.style.color='#5ad1ff';a.textContent='View on BscScan ↗';m.append(a);}
+  }
+  function hideBusy(){if(busyEl)busyEl.style.display='none';}
   const txUrl = hash => `${C.explorer}/tx/${hash}`;
   const addrUrl = address => `${C.explorer}/address/${address}`;
   const parseErr = e => e?.shortMessage || e?.reason || e?.info?.error?.message || e?.message || 'Transaction failed or was rejected.';
@@ -165,7 +183,7 @@
         const value=Number(ethers.formatUnits(pr.rndValueUSDT,18));
         const total=value+Number(clean);
         const reward=Number(ethers.formatUnits(pr.userReward,18));
-        if(pr.userReward>0n)note+=` Estimated reward after 180 days: ${fmt(reward,4)} RND.`;
+        if(pr.userReward>0n)note+=` Reward: ${fmt(reward,4)} RND (180 din ke lock ke baad claim kar sakenge).`;
         else note+=` ⚠ Reward nahi milega: reward ke liye kam se kam ${fmt(Number(ethers.formatUnits(minStep,18)),2)} USDT ki value chahiye (aapki value ≈ ${fmt(total,2)} USDT total). Liquidity phir bhi add ho sakti hai, par reward 0 rahega.`;
       }catch(e){}
       $('quoteNote').textContent=note;
@@ -217,6 +235,13 @@
         const refInfo=await c.getUserInfo(ref);
         if(!refInfo.registered)throw new Error('Referral wallet is not registered on the locker yet. Use a registered referral link or continue without referral.');
       }
+      try{
+        const pr=await readLocker.previewReward(ua,ra);
+        if(pr.userReward===0n){
+          if(!confirm('Is amount par reward calculate nahi ho raha (minimum value se kam).\n\nLiquidity add ho jayegi lekin reward nahi milega. Phir bhi continue karein?'))throw new Error('Cancelled: transaction nahi bheji gayi.');
+        }
+      }catch(e){if(/^Cancelled/.test(e.message))throw e;}
+      showBusy('Processing…','Aapke wallet me confirmation maanga ja raha hai. Wallet kholkar Confirm dabayein aur wait karein.');
       btn.textContent='Approving tokens…';
       await ensureTokenApproval('usdt',ua);await ensureTokenApproval('rnd',ra);
       const [uMin,rMin]=await calculateMinimums(ua,ra);const deadline=Math.floor(Date.now()/1000)+1200;
@@ -242,7 +267,7 @@
       $('quoteNote').textContent='Enter USDT amount. RND will be calculated automatically using the live on-chain RND/USDT price.';
       await loadAll();
     }catch(e){status('liquidityStatus',parseErr(e));toast(parseErr(e));}
-    finally{btn.disabled=false;btn.textContent='Add Liquidity & Lock';}
+    finally{hideBusy();btn.disabled=false;btn.textContent='Add Liquidity & Lock';}
   }
   async function claimPosition(id){try{const c=connectedLocker();if(!confirm(`Claim rewards for LP position #${id}? This pays the recorded user and referrer, if any.`))return;const tx=await c.claimRewards(id);toast('Claim submitted. Waiting for confirmation…');await tx.wait();toast('Reward claim confirmed.');await loadAll();}catch(e){toast(parseErr(e));}}
   async function withdrawPosition(id){try{const c=connectedLocker();if(!confirm(`Withdraw LP position #${id}? The contract will remove liquidity and send the returned USDT and RND to your wallet.`))return;const deadline=Math.floor(Date.now()/1000)+1200;const tx=await c.withdrawLP(id,0,0,deadline);toast('LP withdrawal submitted. Waiting for confirmation…');await tx.wait();toast('LP withdrawal confirmed.');await loadAll();}catch(e){toast(parseErr(e));}}
