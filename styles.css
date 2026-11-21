@@ -5,3 +5,22 @@
 
 /* Wallet balance labels and quote helper */
 .wallet-balance{font-size:10px!important;letter-spacing:0!important;color:#56d5ec!important;font-weight:600;white-space:nowrap}.quote-note{margin:8px 0 12px}.amount-box+.token-chip{margin:7px 0 0 3px}
+
+/* Mobile refinement: prevent header and form controls from squeezing on narrow phones. */
+@media(max-width:560px){
+  .header{gap:8px;min-width:0}
+  .brand{min-width:0;gap:7px;letter-spacing:.7px}
+  .brand span{font-size:10px}
+  .brand small{letter-spacing:1.5px}
+  .mobile-menu{font-size:22px;padding:5px}
+  .wallet-area{flex:0 0 auto}
+  .wallet-area .btn{max-width:108px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;padding:9px 10px}
+  .field-label{align-items:flex-start;gap:6px;flex-wrap:wrap}
+  .wallet-balance{margin-left:auto;text-align:right}
+  .amount-box{min-width:0;padding:9px 10px;gap:8px}
+  .amount-box input{font-size:19px}
+  .preview-head{align-items:flex-start;flex-wrap:wrap}
+  .preview-head span{max-width:48%;text-align:right}
+  .action-stack .btn{min-height:46px;white-space:normal;line-height:1.35;padding:11px 14px}
+  .tx-status{font-size:11px;line-height:1.6}
+}
