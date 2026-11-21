@@ -149,7 +149,7 @@
       const vals=[['USDT added',`${human(p.usdtAdded)} USDT`],['RND added',`${human(p.rndAdded)} RND`],['LP tokens',human(p.lpAmount,18,6)],['Unlock date',new Date(unlock*1000).toLocaleString()],['User reward',`${human(p.rewardAmount)} RND`],['Referral reward',`${human(p.referralRewardAmount)} RND`],['Referrer',p.referrer===zero?'None':short(p.referrer)],['Rewards',rewardsClaimed?'Claimed':'Pending']];
       vals.forEach(([k,v])=>{const d=document.createElement('div');const s=document.createElement('span');s.textContent=k;const b=document.createElement('b');b.textContent=v;d.append(s,b);grid.append(d);});card.append(grid);
       const actions=document.createElement('div');actions.className='position-actions';
-      const claim=document.createElement('button');claim.className='btn btn-gold';claim.textContent=rewardsClaimed?'Rewards claimed':mature?'Claim rewards':'Rewards locked';claim.disabled=rewardsClaimed||!mature;claim.onclick=()=>claimPosition(id);
+      const claim=document.createElement('button');claim.className='btn btn-gold';const noRew=p.rewardAmount===0n&&p.referralRewardAmount===0n;claim.textContent=rewardsClaimed?'Rewards claimed':noRew?'No reward':mature?'Claim rewards':'Rewards locked';claim.disabled=rewardsClaimed||noRew||!mature;claim.onclick=()=>claimPosition(id);
       const withdraw=document.createElement('button');withdraw.className='btn btn-outline';withdraw.textContent=lpWithdrawn?'LP withdrawn':mature?'Withdraw LP':'Withdraw locked LP';withdraw.disabled=lpWithdrawn||!mature;withdraw.onclick=()=>withdrawPosition(id);
       actions.append(claim,withdraw);card.append(actions);list.append(card);
     }
@@ -171,21 +171,34 @@
       await ensureRead();
       const priceWei=await readLocker.getSpotPriceRNDInUSDT();
       if(priceWei<=0n)throw new Error('Live RND price is unavailable.');
-      const usdtWei=units(clean,18);
-      const rndWei=usdtWei*10n**18n/priceWei;
+      let usdtWei=units(clean,18);
+      let rndWei=usdtWei*10n**18n/priceWei;
+      let step=0n,perStep=0n,pr=null,bumped=false;
+      try{
+        [step,perStep]=await Promise.all([readLocker.MIN_REWARD_STEP_USDT(),readLocker.REWARD_PER_STEP()]);
+        pr=await readLocker.previewReward(usdtWei,rndWei);
+        // Contract floor() karta hai: rounding se ek step kat sakta hai (jaise 50 -> 49.9999). Tab 0.01 USDT badha dete hain.
+        if(pr.userReward<(usdtWei/step)*perStep){
+          usdtWei+=10n**16n;
+          rndWei=usdtWei*10n**18n/priceWei;
+          pr=await readLocker.previewReward(usdtWei,rndWei);
+          bumped=true;
+        }
+      }catch(e){}
       if(seq!==quoteSeq)return;
       if(rndWei<=0n)throw new Error('Amount is too small to quote.');
+      if(bumped)$('usdtAmount').value=ethers.formatUnits(usdtWei,18);
       $('rndAmount').value=ethers.formatUnits(rndWei,18);
       let note=`Live on-chain price: ${fmt(Number(ethers.formatUnits(priceWei,18)),8)} USDT per RND. Final amounts may adjust slightly to pool ratio and slippage.`;
-      try{
-        const [minStep,pr]=await Promise.all([readLocker.MIN_REWARD_STEP_USDT(),readLocker.previewReward(usdtWei,rndWei)]);
-        if(seq!==quoteSeq)return;
-        const value=Number(ethers.formatUnits(pr.rndValueUSDT,18));
-        const total=value+Number(clean);
-        const reward=Number(ethers.formatUnits(pr.userReward,18));
-        if(pr.userReward>0n)note+=` Reward: ${fmt(reward,4)} RND (180 din ke lock ke baad claim kar sakenge).`;
-        else note+=` ⚠ Reward nahi milega: reward ke liye kam se kam ${fmt(Number(ethers.formatUnits(minStep,18)),2)} USDT ki value chahiye (aapki value ≈ ${fmt(total,2)} USDT total). Liquidity phir bhi add ho sakti hai, par reward 0 rahega.`;
-      }catch(e){}
+      if(bumped)note+=' (Rounding ki wajah se reward na kate, isliye USDT me 0.01 add kiya gaya.)';
+      if(pr){
+        if(pr.userReward>0n){
+          note+=` Reward: ${fmt(Number(ethers.formatUnits(pr.userReward,18)),4)} RND (180 din ke lock ke baad claim kar sakenge).`;
+          if(pr.referralReward>0n)note+=` Referral reward: ${fmt(Number(ethers.formatUnits(pr.referralReward,18)),4)} RND.`;
+        }else{
+          note+=` ⚠ Reward nahi milega: reward ke liye kam se kam ${fmt(Number(ethers.formatUnits(step,18)),2)} USDT matched value chahiye. Liquidity phir bhi add ho sakti hai, par reward 0 rahega.`;
+        }
+      }
       $('quoteNote').textContent=note;
     }catch(e){
       if(seq===quoteSeq){
@@ -224,10 +237,12 @@
       btn.disabled=true;btn.textContent='Checking…';
       const [uDec,rDec]=await Promise.all([tokenContracts.usdt.decimals(),tokenContracts.rnd.decimals()]);
       if(Number(uDec)!==18||Number(rDec)!==18)throw new Error('Unexpected token decimals. This interface expects 18-decimal USDT and RND.');
-      const ua=units(u,18),ra=units(r,18);
+      const ua=units(u,18),rq=units(r,18);
       const [ub,rb]=await Promise.all([tokenContracts.usdt.balanceOf(account),tokenContracts.rnd.balanceOf(account)]);
       if(ub<ua)throw new Error(`USDT balance kam hai. Zaroorat ${u} USDT, wallet me ${human(ub)} USDT.`);
-      if(rb<ra)throw new Error(`RND balance kam hai. Zaroorat ${r} RND, wallet me ${human(rb)} RND.`);
+      if(rb<rq)throw new Error(`RND balance kam hai. Zaroorat ${r} RND, wallet me ${human(rb)} RND.`);
+      // 0.5% buffer (kam pade to wallet balance tak); extra RND contract wapas refund kar deta hai
+      const raBuf=rq*1005n/1000n;const ra=raBuf<=rb?raBuf:rb;
       const existing=await c.getUserInfo(account);
       let ref=existing.registered?existing.referrer:(referralFromUrl||zero);
       if(!existing.registered && ref!==zero){
@@ -236,7 +251,7 @@
         if(!refInfo.registered)throw new Error('Referral wallet is not registered on the locker yet. Use a registered referral link or continue without referral.');
       }
       try{
-        const pr=await readLocker.previewReward(ua,ra);
+        const pr=await readLocker.previewReward(ua,rq);
         if(pr.userReward===0n){
           if(!confirm('Is amount par reward calculate nahi ho raha (minimum value se kam).\n\nLiquidity add ho jayegi lekin reward nahi milega. Phir bhi continue karein?'))throw new Error('Cancelled: transaction nahi bheji gayi.');
         }
@@ -269,8 +284,40 @@
     }catch(e){status('liquidityStatus',parseErr(e));toast(parseErr(e));}
     finally{hideBusy();btn.disabled=false;btn.textContent='Add Liquidity & Lock';}
   }
-  async function claimPosition(id){try{const c=connectedLocker();if(!confirm(`Claim rewards for LP position #${id}? This pays the recorded user and referrer, if any.`))return;const tx=await c.claimRewards(id);toast('Claim submitted. Waiting for confirmation…');await tx.wait();toast('Reward claim confirmed.');await loadAll();}catch(e){toast(parseErr(e));}}
-  async function withdrawPosition(id){try{const c=connectedLocker();if(!confirm(`Withdraw LP position #${id}? The contract will remove liquidity and send the returned USDT and RND to your wallet.`))return;const deadline=Math.floor(Date.now()/1000)+1200;const tx=await c.withdrawLP(id,0,0,deadline);toast('LP withdrawal submitted. Waiting for confirmation…');await tx.wait();toast('LP withdrawal confirmed.');await loadAll();}catch(e){toast(parseErr(e));}}
+  async function claimPosition(id){
+    try{
+      const c=connectedLocker();
+      await ensureRead();
+      const p=await readLocker.getPosition(id);
+      const need=p.rewardAmount+p.referralRewardAmount;
+      if(need===0n){toast('Is position par reward 0 hai.');return;}
+      const bal=await readLocker.rewardReserveBalance();
+      if(bal<need){toast(`Reward reserve me abhi itna RND nahi hai (zaroorat ${human(need)} RND). Reward funding ke baad claim karein.`);return;}
+      if(!confirm(`Claim rewards for LP position #${id}? This pays the recorded user and referrer, if any.`))return;
+      showBusy('Claiming rewards…','Wallet me confirm karein aur wait karein.');
+      const tx=await c.claimRewards(id);
+      updateBusy('Claim submitted. Waiting for confirmation…',txUrl(tx.hash));
+      await tx.wait();toast('Reward claim confirmed.');await loadAll();
+    }catch(e){toast(parseErr(e));}finally{hideBusy();}
+  }
+  async function withdrawPosition(id){
+    try{
+      const c=connectedLocker();
+      if(!confirm(`Withdraw LP position #${id}? The contract will remove liquidity and send the returned USDT and RND to your wallet.`))return;
+      await ensureRead();
+      const p=await readLocker.getPosition(id);
+      const pair=new ethers.Contract(C.lpPair,['function token0() view returns(address)','function totalSupply() view returns(uint256)','function getReserves() view returns(uint112,uint112,uint32)'],readProvider);
+      const [t0,supply,res]=await Promise.all([pair.token0(),pair.totalSupply(),pair.getReserves()]);
+      const rndIs0=t0.toLowerCase()===C.rnd.toLowerCase();
+      const rR=BigInt(rndIs0?res[0]:res[1]),rU=BigInt(rndIs0?res[1]:res[0]);
+      const minU=p.lpAmount*rU/supply*98n/100n,minR=p.lpAmount*rR/supply*98n/100n; // 2% slippage protection
+      const deadline=Math.floor(Date.now()/1000)+1200;
+      showBusy('Withdrawing LP…','Wallet me confirm karein aur wait karein.');
+      const tx=await c.withdrawLP(id,minU,minR,deadline);
+      updateBusy('Withdrawal submitted. Waiting for confirmation…',txUrl(tx.hash));
+      await tx.wait();toast('LP withdrawal confirmed.');await loadAll();
+    }catch(e){toast(parseErr(e));}finally{hideBusy();}
+  }
   async function loadHistory(){try{await ensureRead();if(!account)throw new Error('Connect wallet first.');const end=await readProvider.getBlockNumber();const from=Math.max(Number(C.deploymentBlock)||0,end-50000);const filters=[readLocker.filters.LiquidityAddedAndLocked(null,account,null),readLocker.filters.LiquidityAddedAndLocked(null,null,account),readLocker.filters.LPWithdrawn(null,account),readLocker.filters.RewardsClaimed(null,account),readLocker.filters.RewardsClaimed(null,null,account),readLocker.filters.UserRegistered(account),readLocker.filters.ReferralRewardAccrued(account),readLocker.filters.ReferralRewardAccrued(null,account)];let all=[];for(const f of filters){try{all.push(...await readLocker.queryFilter(f,from,end));}catch(e){}}
     const uniq=[...new Map(all.map(x=>[x.transactionHash+String(x.index),x])).values()].sort((a,b)=>b.blockNumber-a.blockNumber).slice(0,40);const box=$('historyList');box.innerHTML='';if(!uniq.length){box.textContent=`No matching events found in the scanned block range (${from.toLocaleString()}–${end.toLocaleString()}). Set deploymentBlock in config.js to your contract deployment block for a complete history scan.`;return;}
     for(const ev of uniq){const row=document.createElement('div');row.className='history-row';const n=document.createElement('b');n.textContent=ev.fragment?.name||'Contract event';const block=document.createElement('span');block.textContent=`Block ${ev.blockNumber}`;const time=document.createElement('span');time.textContent='On-chain event';const a=document.createElement('a');a.href=txUrl(ev.transactionHash);a.target='_blank';a.rel='noopener';a.textContent='View tx ↗';row.append(n,block,time,a);box.append(row);}
