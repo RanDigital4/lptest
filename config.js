@@ -7,7 +7,7 @@ window.RND_CONFIG = {
   explorer: 'https://bscscan.com',
   // !!! IMPORTANT: yahan BscScan se apna poora 40-akshar wala locker address paste karein (0x + 40 hex).
   // Purana address 39 akshar ka tha (1 akshar kam) - isi wajah se price read fail ho raha tha.
-  locker: '0x1349d6ed706371b5c0fb9e60c3dee2ff666b1f0',
+  locker: '0x1349D6ED706371B5c0fB9E60C3dEe2fFF666b1f0',
   rnd: '0xcf1fbf18be9202865bcf88e6349b9d207f75942d',
   usdt: '0x55d398326f99059ff775485246999027b3197955',
   lpPair: '0xd6f291a4dbefa0ff99b07d247aa73ff7c20e9991',
