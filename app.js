@@ -76,10 +76,35 @@
     if($('usdtAmount').value)quoteRNDFromUSDT();
   }
   async function connect(){try{await ensureBsc();}catch(e){toast(parseErr(e));}}
+  // Locker ke LP tokens ko pool ke hisse se asli USDT + RND me convert karta hai
+  async function renderLpBreakdown(lp){
+    const big=$('totalLp');
+    let box=$('lpBreakdown');
+    if(!box){box=document.createElement('div');box.id='lpBreakdown';box.style.cssText='margin-top:6px;font-size:.9rem;line-height:1.6;opacity:.9';big.insertAdjacentElement('afterend',box);}
+    try{
+      const pair=new ethers.Contract(C.lpPair,['function token0() view returns(address)','function totalSupply() view returns(uint256)','function getReserves() view returns(uint112,uint112,uint32)'],readProvider);
+      const [t0,supply,res]=await Promise.all([pair.token0(),pair.totalSupply(),pair.getReserves()]);
+      if(supply===0n)throw new Error('empty pool');
+      const rndIs0=t0.toLowerCase()===C.rnd.toLowerCase();
+      const reserveRnd=BigInt(rndIs0?res[0]:res[1]);const reserveUsdt=BigInt(rndIs0?res[1]:res[0]);
+      const usdtWei=lp*reserveUsdt/supply;
+      const rndWei=lp*reserveRnd/supply;
+      const usdtN=Number(ethers.formatUnits(usdtWei,18));
+      const totalUsd=usdtN*2; // pool balanced: RND side ki value = USDT side ki value
+      big.textContent=`$${fmt(totalUsd,2)}`;
+      box.innerHTML='';
+      const l1=document.createElement('div');l1.textContent=`${fmt(usdtN,4)} USDT + ${human(rndWei,18,4)} RND`;
+      const l2=document.createElement('div');l2.textContent=`LP tokens: ${human(lp,18,4)}`;
+      box.append(l1,l2);
+    }catch(e){
+      big.textContent=human(lp,18,4);
+      box.textContent='LP tokens (USDT/RND breakdown unavailable)';
+    }
+  }
   async function loadStats(){
     await ensureRead();
     const [lp,out,users,reserve]=await Promise.all([readLocker.totalLPLocked(),readLocker.totalOutstandingRewards(),readLocker.totalRegisteredUsers(),readLocker.rewardReserveBalance()]);
-    $('totalLp').textContent=human(lp,18,4);$('outstanding').textContent=`${human(out,18,2)} RND`;$('registered').textContent=fmt(Number(users),0);$('reserve').textContent=`${human(reserve,18,2)} RND`;$('reserveDetail').textContent=`${human(reserve,18,4)} RND`;
+    await renderLpBreakdown(lp);$('outstanding').textContent=`${human(out,18,2)} RND`;$('registered').textContent=fmt(Number(users),0);$('reserve').textContent=`${human(reserve,18,2)} RND`;$('reserveDetail').textContent=`${human(reserve,18,4)} RND`;
   }
   async function loadAccount(){
     if(!account)return;
