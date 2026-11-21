@@ -1,27 +1,24 @@
-/* RND LP website configuration — deployed contract supplied by the user. */
+/* RND LP website configuration */
 window.RND_CONFIG = {
   chainId: 56,
   chainHex: '0x38',
   chainName: 'BNB Smart Chain',
   rpcUrls: ['https://bsc-dataseed.binance.org/','https://bsc.publicnode.com','https://bsc-dataseed-public.bnbchain.org'],
   explorer: 'https://bscscan.com',
+  // !!! IMPORTANT: yahan BscScan se apna poora 40-akshar wala locker address paste karein (0x + 40 hex).
+  // Purana address 39 akshar ka tha (1 akshar kam) - isi wajah se price read fail ho raha tha.
   locker: '0x1349d6ed706371b5c0fb9e60c3dee2ff666b1f0',
   rnd: '0xcf1fbf18be9202865bcf88e6349b9d207f75942d',
   usdt: '0x55d398326f99059ff775485246999027b3197955',
   lpPair: '0xd6f291a4dbefa0ff99b07d247aa73ff7c20e9991',
   deploymentBlock: 0,
   lockerAbi: [
-    'function BSC_CHAIN_ID() view returns (uint256)',
     'function RND() view returns (address)',
     'function USDT() view returns (address)',
-    'function PANCAKE_V2_FACTORY() view returns (address)',
-    'function PANCAKE_V2_ROUTER() view returns (address)',
-    'function LP_PAIR() view returns (address)',
     'function LOCK_DURATION() view returns (uint256)',
     'function MIN_REWARD_STEP_USDT() view returns (uint256)',
     'function REWARD_PER_STEP() view returns (uint256)',
     'function REFERRAL_BPS() view returns (uint256)',
-    'function BPS_DENOMINATOR() view returns (uint256)',
     'function nextPositionId() view returns (uint256)',
     'function totalLPLocked() view returns (uint256)',
     'function totalOutstandingRewards() view returns (uint256)',
