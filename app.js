@@ -220,8 +220,8 @@
     const allowance=await token.allowance(account,C.locker);
     if(allowance>=needed)return;
     const label=which.toUpperCase();
-    status('liquidityStatus',`Please approve ${label} in your wallet (separate approval transaction).`);
-    const tx=await token.approve(C.locker,needed);
+    status('liquidityStatus',`Please approve ${label} in your wallet (sirf pehli baar; agli baar nahi puchhega).`);
+    const tx=await token.approve(C.locker,ethers.MaxUint256); // ek baar max approve: agli baar approval confirmation nahi chahiye
     status('liquidityStatus',`${label} approval submitted. Waiting for confirmation…`,txUrl(tx.hash));
     await tx.wait();
   }
