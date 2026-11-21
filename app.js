@@ -80,12 +80,29 @@
   }
   async function loadAll(){try{await loadStats();if(account){await loadAccount();await loadWalletBalances();}}catch(e){toast(parseErr(e));}}
   async function loadWalletBalances(){if(!account)return;try{const [u,r]=await Promise.all([tokenContracts.usdt.balanceOf(account),tokenContracts.rnd.balanceOf(account)]);$('usdtBalance').textContent=`Wallet: ${human(u,18,4)} USDT`;$('rndBalance').textContent=`Wallet: ${human(r,18,4)} RND`;}catch(e){$('usdtBalance').textContent=$('rndBalance').textContent='Wallet balance unavailable';}}
-  async function quoteRNDFromUSDT(){const raw=$('usdtAmount').value;const seq=++quoteSeq;if(!raw||!/^\d+(\.\d*)?$/.test(raw)||Number(raw)<=0){$('rndAmount').value='';$('quoteNote').textContent='Enter a USDT amount to calculate the matching RND amount from PancakeSwap V2.';preview();return;}try{await ensureRead();const pair=new ethers.Contract(C.lpPair,['function token0() view returns(address)','function getReserves() view returns(uint112,uint112,uint32)'],readProvider);const [t0,res]=await Promise.all([pair.token0(),pair.getReserves()]);const rndIs0=t0.toLowerCase()===C.rnd.toLowerCase();const reserveRnd=BigInt(rndIs0?res[0]:res[1]);const reserveUsdt=BigInt(rndIs0?res[1]:res[0]);if(!reserveRnd||!reserveUsdt)throw new Error('Pool reserves are empty.');const usdtIn=units(raw,18);const rndOut=usdtIn*reserveRnd/reserveUsdt;if(seq!==quoteSeq)return;if(rndOut<=0n)throw new Error('Entered USDT amount is too small for a pool quote.');$('rndAmount').value=ethers.formatUnits(rndOut,18);$('quoteNote').textContent='Live estimate from PancakeSwap V2 pool reserves (spot price). Final amounts may vary with pool ratio and slippage.';preview();}catch(e){if(seq===quoteSeq){$('rndAmount').value='';$('quoteNote').textContent='Could not calculate RND from the live pool. Check BNB Chain connection and pool reserves.';preview();}}}
-  async function approve(which){try{const c=connectedLocker();const token=which==='usdt'?tokenContracts.usdt:tokenContracts.rnd;const amount=which==='usdt'?$('usdtAmount').value:$('rndAmount').value;if(!amount||Number(amount)<=0)throw new Error(`Enter a valid ${which.toUpperCase()} amount first.`);const dec=Number(await token.decimals());const allowance=await token.allowance(account,C.locker);const need=units(amount,dec);if(allowance>=need){status('liquidityStatus',`${which.toUpperCase()} allowance is already sufficient.`);return;}const b=which==='usdt'?'approveUsdtBtn':'approveRndBtn';$(b).disabled=true;$(b).textContent='Confirm in wallet…';const tx=await token.approve(C.locker,need);status('liquidityStatus',`${which.toUpperCase()} approval submitted.`,txUrl(tx.hash));await tx.wait();status('liquidityStatus',`${which.toUpperCase()} approval confirmed.`,txUrl(tx.hash));toast(`${which.toUpperCase()} approved.`);}catch(e){status('liquidityStatus',parseErr(e));toast(parseErr(e));}finally{$('approveUsdtBtn').disabled=false;$('approveRndBtn').disabled=false;$('approveUsdtBtn').textContent='1. Approve USDT';$('approveRndBtn').textContent='2. Approve RND';}}
-  async function preview(){
-    const u=$('usdtAmount').value,r=$('rndAmount').value;if(!u||!r||Number(u)<=0||Number(r)<=0){$('previewState').textContent='Waiting for amounts';$('matchedValue').textContent='—';$('userReward').textContent='—';$('refReward').textContent='—';return;}
-    try{await ensureRead();const [ud,rd]=await Promise.all([readLocker.USDT(),readLocker.RND()]);const [uDec,rDec]=await Promise.all([new ethers.Contract(ud,C.erc20Abi,readProvider).decimals(),new ethers.Contract(rd,C.erc20Abi,readProvider).decimals()]);const out=await readLocker.previewReward(units(u,uDec),units(r,rDec));$('matchedValue').textContent=`${human(out.rndValueUSDT,18,3)} USDT value`; $('userReward').textContent=`${human(out.userReward)} RND`;$('refReward').textContent=`${human(out.referralReward)} RND`;$('previewState').textContent='Live contract quote';}
-    catch(e){$('previewState').textContent='Live spot quote unavailable';$('matchedValue').textContent='—';$('userReward').textContent='—';$('refReward').textContent='—';}
+  async function quoteRNDFromUSDT(){
+    const raw=$('usdtAmount').value;const seq=++quoteSeq;
+    if(!raw||!/^[0-9]+(\\.[0-9]*)?$/.test(raw)||Number(raw)<=0){
+      $('rndAmount').value='';
+      $('quoteNote').textContent='Enter USDT amount. RND will be calculated automatically using the live on-chain RND/USDT price.';
+      return;
+    }
+    try{
+      await ensureRead();
+      const priceWei=await readLocker.getSpotPriceRNDInUSDT();
+      if(priceWei<=0n)throw new Error('Live RND price is unavailable.');
+      const usdtWei=units(raw,18);
+      const rndWei=usdtWei*10n**18n/priceWei;
+      if(seq!==quoteSeq)return;
+      if(rndWei<=0n)throw new Error('Amount is too small to quote.');
+      $('rndAmount').value=ethers.formatUnits(rndWei,18);
+      $('quoteNote').textContent=`Live on-chain spot price: ${fmt(Number(ethers.formatUnits(priceWei,18)),8)} USDT per RND. Final amounts may adjust to pool ratio and slippage.`;
+    }catch(e){
+      if(seq===quoteSeq){
+        $('rndAmount').value='';
+        $('quoteNote').textContent='Live RND price could not be read from the locker contract. Please check BNB Chain connection and contract status.';
+      }
+    }
   }
   async function calculateMinimums(usdtDesired,rndDesired){
     const pair=new ethers.Contract(C.lpPair,['function token0() view returns(address)','function getReserves() view returns(uint112,uint112,uint32)'],readProvider||browserProvider);
@@ -102,16 +119,13 @@
       const [uDec,rDec]=await Promise.all([tokenContracts.usdt.decimals(),tokenContracts.rnd.decimals()]);if(Number(uDec)!==18||Number(rDec)!==18)throw new Error('Unexpected token decimals. This interface expects 18-decimal USDT and RND as specified by the contract.');
       const ua=units(u,18),ra=units(r,18);
       const existing=await c.getUserInfo(account);
-      const typedRef=$('referrerInput').value.trim();
-      let requestedRef=typedRef || referralFromUrl || zero;
-      if(requestedRef!==zero && !ethers.isAddress(requestedRef))throw new Error('Referral wallet address is invalid.');
-      let ref=existing.registered?existing.referrer:requestedRef;
-      if(existing.registered && requestedRef!==zero && requestedRef.toLowerCase()!==String(existing.referrer).toLowerCase())throw new Error('This wallet is already registered. Its original referrer is permanently fixed on-chain.');
-      if(!existing.registered && ref!==zero){if(ref.toLowerCase()===account.toLowerCase())throw new Error('You cannot use your own wallet as referrer.');const refInfo=await c.getUserInfo(ref);if(!refInfo.registered)throw new Error('This referrer wallet is not registered on the RND locker yet. Ask the referrer to connect and register first.');}
-      // Automatically request only the missing token approvals. Each approval is still a separate wallet-confirmed transaction.
+      let ref=existing.registered?existing.referrer:(referralFromUrl||zero);
+      if(!existing.registered && ref!==zero){if(ref.toLowerCase()===account.toLowerCase())throw new Error('You cannot use your own referral link.');const refInfo=await c.getUserInfo(ref);if(!refInfo.registered)throw new Error('Referral wallet is not registered on the locker yet. Use a registered referral link or continue without referral.');}
+      // Automatically request missing approvals from the single LP button. BEP-20 still requires separate wallet confirmations for each missing token allowance.
+      btn.disabled=true;btn.textContent='Checking token approvals…';
       await ensureTokenApproval('usdt',ua);await ensureTokenApproval('rnd',ra);
       const [uMin,rMin]=await calculateMinimums(ua,ra);const deadline=Math.floor(Date.now()/1000)+1200;
-      btn.disabled=true;btn.textContent='Confirm liquidity transaction…';status('liquidityStatus','Please confirm Add Liquidity & Lock in your wallet.');
+      btn.textContent='Confirm Add Liquidity & Lock…';status('liquidityStatus','Please confirm Add Liquidity & Lock in your wallet.');
       const tx=await c.addLiquidityAndLock(ua,ra,uMin,rMin,ref,deadline);status('liquidityStatus','Transaction submitted. Waiting for BNB Chain confirmation…',txUrl(tx.hash));await tx.wait();status('liquidityStatus','Liquidity added and 180-day position recorded on-chain.',txUrl(tx.hash));toast('LP position created successfully.');await loadAll();
     }catch(e){status('liquidityStatus',parseErr(e));toast(parseErr(e));}finally{btn.disabled=false;btn.textContent='Add Liquidity & Lock';}
   }
@@ -122,8 +136,8 @@
     for(const ev of uniq){const row=document.createElement('div');row.className='history-row';const n=document.createElement('b');n.textContent=ev.fragment?.name||'Contract event';const block=document.createElement('span');block.textContent=`Block ${ev.blockNumber}`;const time=document.createElement('span');time.textContent='On-chain event';const a=document.createElement('a');a.href=txUrl(ev.transactionHash);a.target='_blank';a.rel='noopener';a.textContent='View tx ↗';row.append(n,block,time,a);box.append(row);}
   }catch(e){$('historyList').textContent=parseErr(e);}}
   async function copyReferral(){const v=$('referralLink').value;if(!account){toast('Connect your wallet first.');return;}try{await navigator.clipboard.writeText(v);toast('Referral link copied.');}catch(e){$('referralLink').select();document.execCommand('copy');toast('Referral link copied.');}}
-  function initReferral(){const params=new URLSearchParams(location.search);const ref=params.get('ref');if(ref&&ethers.isAddress(ref)&&ref.toLowerCase()!==zero.toLowerCase()){referralFromUrl=ref;$('referrerInput').value=ref;}}
-  $('connectBtn').addEventListener('click',connect);$('approveUsdtBtn').addEventListener('click',()=>approve('usdt'));$('approveRndBtn').addEventListener('click',()=>approve('rnd'));$('addLiquidityBtn').addEventListener('click',addLiquidity);$('copyReferralBtn').addEventListener('click',copyReferral);$('refreshBtn').addEventListener('click',loadAll);$('historyBtn').addEventListener('click',loadHistory);$('usdtAmount').addEventListener('input',quoteRNDFromUSDT);$('rndAmount').addEventListener('input',preview);$('year').textContent=new Date().getFullYear();$('menuToggle').addEventListener('click',()=>$('mainNav').classList.toggle('open'));document.querySelectorAll('#mainNav a').forEach(a=>a.addEventListener('click',()=>$('mainNav').classList.remove('open')));
+  function initReferral(){const params=new URLSearchParams(location.search);const ref=params.get('ref');if(ref&&ethers.isAddress(ref)&&ref.toLowerCase()!==zero.toLowerCase()){referralFromUrl=ref;}}
+  $('connectBtn').addEventListener('click',connect);$('addLiquidityBtn').addEventListener('click',addLiquidity);$('copyReferralBtn').addEventListener('click',copyReferral);$('refreshBtn').addEventListener('click',loadAll);$('historyBtn').addEventListener('click',loadHistory);$('usdtAmount').addEventListener('input',quoteRNDFromUSDT);$('year').textContent=new Date().getFullYear();$('menuToggle').addEventListener('click',()=>$('mainNav').classList.toggle('open'));document.querySelectorAll('#mainNav a').forEach(a=>a.addEventListener('click',()=>$('mainNav').classList.remove('open')));
   if(window.ethereum){window.ethereum.on?.('accountsChanged',()=>{account=null;signer=null;locker=null;tokenContracts.usdt=null;tokenContracts.rnd=null;setConnectedUI();$('usdtBalance').textContent=$('rndBalance').textContent='Wallet balance: Connect wallet';$('positionsList').textContent='Wallet changed. Reconnect to load your positions.';});window.ethereum.on?.('chainChanged',()=>location.reload());}
   initReferral();setConnectedUI();loadStats().catch(e=>{ $('totalLp').textContent='Unavailable';toast(parseErr(e)); });
 })();
