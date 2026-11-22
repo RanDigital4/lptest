@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#050a17">
   <meta name="description" content="RND Liquidity — non-custodial liquidity locking and direct referral rewards on BNB Smart Chain.">
   <title>RND Liquidity | Ran Digital</title>
-  <link rel="icon" href="https://raw.githubusercontent.com/test63947174-cyber/rnd/main/RND%20LOGO.png">
+  <link rel="icon" href="https://raw.githubusercontent.com/test63947174-cyber/rnd/main/Rnd%20logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
@@ -15,7 +15,7 @@
   <div class="ambient"></div>
   <div class="topline"><span class="pulse"></span> RND LIQUIDITY PROTOCOL <span class="top-sep">•</span> BNB SMART CHAIN</div>
   <header class="header">
-    <a class="brand" href="#home"><img src="https://raw.githubusercontent.com/test63947174-cyber/rnd/main/RND%20LOGO.png" alt="RND logo"><span>RAN DIGITAL<small>LIQUIDITY PROTOCOL</small></span></a>
+    <a class="brand" href="#home"><img src="https://raw.githubusercontent.com/test63947174-cyber/rnd/main/Rnd%20logo.png" alt="RND logo"><span>RAN DIGITAL<small>LIQUIDITY PROTOCOL</small></span></a>
     <button class="mobile-menu" id="menuToggle" aria-label="Toggle navigation">☰</button>
     <nav id="mainNav"><a href="#home">Overview</a><a href="#liquidity">Add Liquidity</a><a href="#dashboard">My Positions</a><a href="#referrals">Referrals</a><a href="#rewards">Rewards</a><a href="#how">How It Works</a></nav>
     <div class="wallet-area"><span id="networkBadge" class="network-badge">● Not connected</span><button class="btn btn-gold" id="connectBtn">Connect Wallet</button></div>
@@ -67,8 +67,10 @@
 
     <section class="section wrap" id="faq"><div class="section-heading centered"><div><div class="eyebrow">HELP CENTER</div><h2>Frequently asked <em>questions</em></h2></div></div><div class="faq-list"><details><summary>Can I withdraw my LP before 180 days?</summary><p>No. The deployed locker contract requires the position to reach its unlock timestamp before LP withdrawal.</p></details><details><summary>Are LP trading fees paid as a separate claim?</summary><p>The locker does not expose a separate LP-fee harvesting function. Trading fees accrue in the PancakeSwap V2 pair reserves and can affect the value of the underlying LP position. The actual withdrawal amount depends on pool conditions.</p></details><details><summary>Can I lock less than $50?</summary><p>Yes. Any positive USDT and RND amounts accepted by PancakeSwap can create a 180-day locked LP position. The $50 threshold applies only to reward calculation; below one full matched $50 step, the user reward is zero.</p></details><details><summary>How are RND rewards calculated?</summary><p>The contract reads the current PancakeSwap V2 reserve-ratio spot price, compares the actual paired USDT and RND value, and awards 20 RND for each full $50 matched step.</p></details><details><summary>Can I add a referral later?</summary><p>Referral is optional on first registration. You may use a referral link or enter a referrer wallet address, or leave it blank for direct LP. The first registration is permanent: a wallet first registered without a referrer cannot attach one later.</p></details><details><summary>When can rewards be claimed?</summary><p>Rewards mature at the same unlock timestamp as the associated LP position. Claims also require enough RND in the locker reserve for that position's payout.</p></details><details><summary>Does the website hold my funds?</summary><p>No. Transactions are signed by your wallet and executed by the smart contract. Never share your seed phrase or private key with anyone.</p></details></div></section>
   </main>
-  <footer class="footer"><div class="wrap footer-inner"><a class="brand" href="#home"><img src="https://raw.githubusercontent.com/test63947174-cyber/rnd/main/RND%20LOGO.png" alt="RND logo"><span>RAN DIGITAL<small>LIQUIDITY PROTOCOL</small></span></a><div><b>RND Liquidity</b><p>Non-custodial interface on BNB Smart Chain.</p><a href="https://bscscan.com/address/0x1349d6ed706371b5c0fb9e60c3dee2ff666b1f0" target="_blank" rel="noopener">Contract on BscScan ↗</a></div><small>© <span id="year"></span> Ran Digital. Interact only with verified contract addresses.</small></div></footer>
+  <footer class="footer"><div class="wrap footer-inner"><a class="brand" href="#home"><img src="https://raw.githubusercontent.com/test63947174-cyber/rnd/main/Rnd%20logo.png" alt="RND logo"><span>RAN DIGITAL<small>LIQUIDITY PROTOCOL</small></span></a><div><b>RND Liquidity</b><p>Non-custodial interface on BNB Smart Chain.</p><a href="https://bscscan.com/address/0x1349d6ed706371b5c0fb9e60c3dee2ff666b1f0" target="_blank" rel="noopener">Contract on BscScan ↗</a></div><small>© <span id="year"></span> Ran Digital. Interact only with verified contract addresses.</small></div></footer>
   <div class="toast" id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
-  <script src="config.js"></script><script src="app.js"></script>
+  <script src="config.js"></script>
+<script src="wallet.js"></script>
+<script src="app.js"></script>
 </body></html>
