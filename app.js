@@ -78,14 +78,15 @@
   function connectedLocker(){if(!locker||!account)throw new Error('Connect your wallet first.');return locker;}
   async function ensureBsc(){
     checkConfig();
-    if(!window.ethereum)throw new Error('No compatible wallet detected. Open this page in MetaMask or Trust Wallet browser, or install a wallet extension.');
-    browserProvider=new ethers.BrowserProvider(window.ethereum);
+    if(!window.RNDWallet)throw new Error('Wallet connector load nahi hua. index.html me wallet.js ko app.js se pehle load karein.');
+    const injectedProvider=await window.RNDWallet.connect();
+    browserProvider=new ethers.BrowserProvider(injectedProvider);
     await browserProvider.send('eth_requestAccounts',[]);
     let net=await browserProvider.getNetwork();
     if(Number(net.chainId)!==56){
-      try{await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:C.chainHex}]});}
-      catch(e){if(e.code===4902){await window.ethereum.request({method:'wallet_addEthereumChain',params:[{chainId:C.chainHex,chainName:C.chainName,nativeCurrency:{name:'BNB',symbol:'BNB',decimals:18},rpcUrls:C.rpcUrls,blockExplorerUrls:[C.explorer]}]});}else throw new Error('Please switch your wallet to BNB Smart Chain (Chain ID 56).');}
-      browserProvider=new ethers.BrowserProvider(window.ethereum);net=await browserProvider.getNetwork();
+      try{await injectedProvider.request({method:'wallet_switchEthereumChain',params:[{chainId:C.chainHex}]});}
+      catch(e){if(e.code===4902){await injectedProvider.request({method:'wallet_addEthereumChain',params:[{chainId:C.chainHex,chainName:C.chainName,nativeCurrency:{name:'BNB',symbol:'BNB',decimals:18},rpcUrls:C.rpcUrls,blockExplorerUrls:[C.explorer]}]});}else throw new Error('Please switch your wallet to BNB Smart Chain (Chain ID 56).');}
+      browserProvider=new ethers.BrowserProvider(injectedProvider);net=await browserProvider.getNetwork();
     }
     if(Number(net.chainId)!==56)throw new Error('Wallet is not connected to BNB Smart Chain.');
     signer=await browserProvider.getSigner();account=await signer.getAddress();locker=new ethers.Contract(C.locker,C.lockerAbi,signer);
@@ -325,15 +326,28 @@
   async function copyReferral(){const v=$('referralLink').value;if(!account){toast('Connect your wallet first.');return;}try{await navigator.clipboard.writeText(v);toast('Referral link copied.');}catch(e){$('referralLink').select();document.execCommand('copy');toast('Referral link copied.');}}
   function initReferral(){const params=new URLSearchParams(location.search);const ref=params.get('ref');if(ref&&ethers.isAddress(ref)&&ref.toLowerCase()!==zero.toLowerCase()){referralFromUrl=ref;}}
   $('connectBtn').addEventListener('click',connect);$('addLiquidityBtn').addEventListener('click',addLiquidity);$('copyReferralBtn').addEventListener('click',copyReferral);$('refreshBtn').addEventListener('click',loadAll);$('historyBtn').addEventListener('click',loadHistory);$('usdtAmount').addEventListener('input',quoteRNDFromUSDT);$('year').textContent=new Date().getFullYear();$('menuToggle').addEventListener('click',()=>$('mainNav').classList.toggle('open'));document.querySelectorAll('#mainNav a').forEach(a=>a.addEventListener('click',()=>$('mainNav').classList.remove('open')));
-  if(window.ethereum){
-    window.ethereum.on?.('accountsChanged',accs=>{
-      account=null;signer=null;locker=null;tokenContracts.usdt=null;tokenContracts.rnd=null;setConnectedUI();
-      $('usdtBalance').textContent=$('rndBalance').textContent='Wallet balance: Connect wallet';
-      $('positionsList').textContent='Wallet changed. Reconnecting…';
-      if(accs&&accs.length)connect();
-    });
-    window.ethereum.on?.('chainChanged',()=>location.reload());
+  let boundWalletProvider=null;
+  function clearWalletSession(message='Wallet disconnected. Connect again.'){
+    account=null;signer=null;locker=null;browserProvider=null;
+    tokenContracts.usdt=null;tokenContracts.rnd=null;
+    setConnectedUI();
+    $('usdtBalance').textContent=$('rndBalance').textContent='Wallet balance: Connect wallet';
+    $('positionsList').textContent=message;
+    $('myPending').textContent='—';$('rewardPendingBig').innerHTML='— <small>RND</small>';
   }
+  function bindWalletEvents(provider){
+    if(!provider||boundWalletProvider===provider)return;
+    boundWalletProvider=provider;
+    provider.on?.('accountsChanged',accs=>{
+      if(!accs||!accs.length){clearWalletSession();return;}
+      clearWalletSession('Wallet account changed. Updating account data…');
+      connect();
+    });
+    provider.on?.('chainChanged',()=>location.reload());
+    provider.on?.('disconnect',()=>clearWalletSession());
+  }
+  // Wallet selection is handled by wallet.js; reconnect events are bound after connection.
+  window.addEventListener('rndwallet:connected',e=>bindWalletEvents(e.detail?.provider));
   initReferral();setConnectedUI();
   loadStats().catch(e=>{ $('totalLp').textContent='Unavailable';toast(parseErr(e)); });
 })();
